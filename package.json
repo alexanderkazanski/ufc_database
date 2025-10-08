@@ -1,0 +1,26 @@
+{
+  "name": "ufc_database",
+  "version": "1.0.0",
+  "description": "��#\u0000 \u0000u\u0000f\u0000c\u0000_\u0000d\u0000a\u0000t\u0000a\u0000b\u0000a\u0000s\u0000e\u0000\r\u0000 \u0000",
+  "homepage": "https://github.com/alexanderkazanski/ufc_database#readme",
+  "bugs": {
+    "url": "https://github.com/alexanderkazanski/ufc_database/issues"
+  },
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/alexanderkazanski/ufc_database.git"
+  },
+  "license": "ISC",
+  "author": "",
+  "type": "commonjs",
+  "main": "index.js",
+  "scripts": {
+    "test": "echo \"Error: no test specified\" && exit 1"
+  },
+  "dependencies": {
+    "better-sqlite3": "^12.4.1",
+    "cors": "^2.8.5",
+    "express": "^5.1.0",
+    "nodemon": "^3.1.10"
+  }
+}
