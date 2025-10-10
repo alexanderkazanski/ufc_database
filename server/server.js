@@ -1,306 +1,623 @@
-// UFC Database API - Node.js with Express and SQLite
-// Install dependencies: npm install express better-sqlite3 cors
-
 const express = require('express');
 const Database = require('better-sqlite3');
 const cors = require('cors');
 
 const app = express();
-const db = new Database('ufc_data.db', { readonly: true }); // readonly for safety
+const PORT = process.env.PORT || 3000;
 
 // Middleware
 app.use(cors());
 app.use(express.json());
 
-// ============== FIGHTER ENDPOINTS ==============
+// Database connection
+const db = new Database('./ufc_stats.db');
+console.log('Connected to UFC stats database');
 
-// GET /api/fighters - Get all fighters
-app.get('/api/fighters', (req, res) => {
-  try {
-    const fighters = db.prepare(`
-      SELECT fighter_id, name, height, weight, reach, stance, dob,
-             slpm, str_acc, sapm, str_def, td_avg, td_acc, td_def, sub_avg
-      FROM fighters
-      ORDER BY name
-    `).all();
-    
-    res.json({ success: true, data: fighters });
-  } catch (error) {
-    res.status(500).json({ success: false, error: error.message });
-  }
-});
+// =============================================
+// EVENT ENDPOINTS
+// =============================================
 
-// GET /api/fighters/:id - Get specific fighter by ID
-app.get('/api/fighters/:id', (req, res) => {
-  try {
-    const fighter = db.prepare(`
-      SELECT * FROM fighters WHERE fighter_id = ?
-    `).get(req.params.id);
-    
-    if (!fighter) {
-      return res.status(404).json({ success: false, error: 'Fighter not found' });
-    }
-    
-    res.json({ success: true, data: fighter });
-  } catch (error) {
-    res.status(500).json({ success: false, error: error.message });
-  }
-});
-
-// GET /api/fighters/name/:name - Get fighter by name
-app.get('/api/fighters/name/:name', (req, res) => {
-  try {
-    const fighter = db.prepare(`
-      SELECT * FROM fighters WHERE name LIKE ?
-    `).get(`%${req.params.name}%`);
-    
-    if (!fighter) {
-      return res.status(404).json({ success: false, error: 'Fighter not found' });
-    }
-    
-    res.json({ success: true, data: fighter });
-  } catch (error) {
-    res.status(500).json({ success: false, error: error.message });
-  }
-});
-
-// GET /api/fighters/:id/history - Get fight history for a fighter
-app.get('/api/fighters/:id/history', (req, res) => {
-  try {
-    const fights = db.prepare(`
-      SELECT 
-        e.event_name, e.event_date, e.event_location,
-        f1.name as fighter, f2.name as opponent,
-        fr.weight_class, fr.result, fr.method, fr.method_detail,
-        fr.round, fr.time, fr.kd, fr.sig_str, fr.td, fr.sub,
-        fr.fight_url
-      FROM fight_results fr
-      JOIN fighters f1 ON fr.fighter_id = f1.fighter_id
-      LEFT JOIN fighters f2 ON fr.opponent_id = f2.fighter_id
-      JOIN events e ON fr.event_id = e.event_id
-      WHERE f1.fighter_id = ?
-      ORDER BY e.event_date DESC
-    `).all(req.params.id);
-    
-    res.json({ success: true, data: fights });
-  } catch (error) {
-    res.status(500).json({ success: false, error: error.message });
-  }
-});
-
-// GET /api/fighters/:id/stats - Get fighter stats summary
-app.get('/api/fighters/:id/stats', (req, res) => {
-  try {
-    const stats = db.prepare(`
-      SELECT 
-        f.name,
-        COUNT(CASE WHEN fr.result = 'Win' THEN 1 END) as wins,
-        COUNT(CASE WHEN fr.result = 'Loss' THEN 1 END) as losses,
-        COUNT(CASE WHEN fr.result = 'Draw' THEN 1 END) as draws,
-        COUNT(CASE WHEN fr.result = 'NC' THEN 1 END) as no_contests,
-        COUNT(CASE WHEN fr.method = 'KO/TKO' AND fr.result = 'Win' THEN 1 END) as ko_wins,
-        COUNT(CASE WHEN fr.method = 'SUB' AND fr.result = 'Win' THEN 1 END) as sub_wins,
-        AVG(fr.sig_str) as avg_sig_strikes,
-        AVG(fr.td) as avg_takedowns,
-        SUM(fr.kd) as total_knockdowns
-      FROM fighters f
-      LEFT JOIN fight_results fr ON f.fighter_id = fr.fighter_id
-      WHERE f.fighter_id = ?
-      GROUP BY f.fighter_id, f.name
-    `).get(req.params.id);
-    
-    if (!stats) {
-      return res.status(404).json({ success: false, error: 'Fighter not found' });
-    }
-    
-    res.json({ success: true, data: stats });
-  } catch (error) {
-    res.status(500).json({ success: false, error: error.message });
-  }
-});
-
-// ============== EVENT ENDPOINTS ==============
-
-// GET /api/events - Get all events
+// GET all events
 app.get('/api/events', (req, res) => {
   try {
-    const events = db.prepare(`
-      SELECT event_id, event_name, event_date, event_location
+    const stmt = db.prepare(`
+      SELECT 
+        event_id,
+        event_name,
+        event_date,
+        location,
+        created_at
       FROM events
       ORDER BY event_date DESC
-    `).all();
+    `);
+    const events = stmt.all();
     
-    res.json({ success: true, data: events });
+    res.json({
+      success: true,
+      count: events.length,
+      data: events
+    });
   } catch (error) {
-    res.status(500).json({ success: false, error: error.message });
+    res.status(500).json({
+      success: false,
+      error: error.message
+    });
   }
 });
 
-// GET /api/events/:id - Get specific event
+// GET single event by ID
 app.get('/api/events/:id', (req, res) => {
   try {
-    const event = db.prepare(`
-      SELECT * FROM events WHERE event_id = ?
-    `).get(req.params.id);
+    const stmt = db.prepare(`
+      SELECT 
+        event_id,
+        event_name,
+        event_date,
+        location,
+        created_at
+      FROM events
+      WHERE event_id = ?
+    `);
+    const event = stmt.get(req.params.id);
     
     if (!event) {
-      return res.status(404).json({ success: false, error: 'Event not found' });
+      return res.status(404).json({
+        success: false,
+        error: 'Event not found'
+      });
     }
     
-    res.json({ success: true, data: event });
+    res.json({
+      success: true,
+      data: event
+    });
   } catch (error) {
-    res.status(500).json({ success: false, error: error.message });
+    res.status(500).json({
+      success: false,
+      error: error.message
+    });
   }
 });
 
-// GET /api/events/:id/fights - Get all fights for an event
+// GET all fights for a specific event
 app.get('/api/events/:id/fights', (req, res) => {
   try {
-    const fights = db.prepare(`
+    const stmt = db.prepare(`
       SELECT 
-        f.name, fr.kd, fr.sig_str, fr.td, fr.sub,
-        fr.result, fr.method, fr.method_detail, fr.round, fr.time,
-        fr.weight_class, f2.name as opponent
-      FROM fight_results fr
-      JOIN fighters f ON fr.fighter_id = f.fighter_id
-      LEFT JOIN fighters f2 ON fr.opponent_id = f2.fighter_id
-      WHERE fr.event_id = ?
-    `).all(req.params.id);
+        f.fight_id,
+        f.event_id,
+        e.event_name,
+        f1.fighter_id as fighter1_id,
+        f1.name as fighter1_name,
+        f1.nickname as fighter1_nickname,
+        f2.fighter_id as fighter2_id,
+        f2.name as fighter2_name,
+        f2.nickname as fighter2_nickname,
+        w.fighter_id as winner_id,
+        w.name as winner_name,
+        f.method,
+        f.round,
+        f.time,
+        f.created_at
+      FROM fights f
+      JOIN events e ON f.event_id = e.event_id
+      JOIN fighters f1 ON f.fighter1_id = f1.fighter_id
+      JOIN fighters f2 ON f.fighter2_id = f2.fighter_id
+      LEFT JOIN fighters w ON f.winner_id = w.fighter_id
+      WHERE f.event_id = ?
+    `);
+    const fights = stmt.all(req.params.id);
     
-    res.json({ success: true, data: fights });
+    res.json({
+      success: true,
+      count: fights.length,
+      data: fights
+    });
   } catch (error) {
-    res.status(500).json({ success: false, error: error.message });
+    res.status(500).json({
+      success: false,
+      error: error.message
+    });
   }
 });
 
-// ============== SEARCH & FILTER ENDPOINTS ==============
+// =============================================
+// FIGHTER ENDPOINTS
+// =============================================
 
-// GET /api/search/fighters?q=name - Search fighters by name
-app.get('/api/search/fighters', (req, res) => {
+// GET all fighters
+app.get('/api/fighters', (req, res) => {
   try {
-    const query = req.query.q || '';
-    const fighters = db.prepare(`
-      SELECT fighter_id, name, height, weight, reach, stance
+    const { search, stance, limit = 100, offset = 0 } = req.query;
+    
+    let sql = `
+      SELECT 
+        f.fighter_id,
+        f.name,
+        f.nickname,
+        f.height,
+        f.weight,
+        f.reach,
+        f.stance,
+        f.dob,
+        f.created_at
+      FROM fighters f
+      WHERE 1=1
+    `;
+    
+    const params = [];
+    
+    // Add search filter
+    if (search) {
+      sql += ` AND (f.name LIKE ? OR f.nickname LIKE ?)`;
+      params.push(`%${search}%`, `%${search}%`);
+    }
+    
+    // Add stance filter
+    if (stance) {
+      sql += ` AND f.stance = ?`;
+      params.push(stance);
+    }
+    
+    sql += ` ORDER BY f.name ASC LIMIT ? OFFSET ?`;
+    params.push(parseInt(limit), parseInt(offset));
+    
+    const stmt = db.prepare(sql);
+    const fighters = stmt.all(...params);
+    
+    res.json({
+      success: true,
+      count: fighters.length,
+      data: fighters
+    });
+  } catch (error) {
+    res.status(500).json({
+      success: false,
+      error: error.message
+    });
+  }
+});
+
+// GET single fighter by ID
+app.get('/api/fighters/:id', (req, res) => {
+  try {
+    const stmt = db.prepare(`
+      SELECT 
+        fighter_id,
+        name,
+        nickname,
+        height,
+        weight,
+        reach,
+        stance,
+        dob,
+        created_at
       FROM fighters
-      WHERE name LIKE ?
-      ORDER BY name
-      LIMIT 20
-    `).all(`%${query}%`);
+      WHERE fighter_id = ?
+    `);
+    const fighter = stmt.get(req.params.id);
     
-    res.json({ success: true, data: fighters });
+    if (!fighter) {
+      return res.status(404).json({
+        success: false,
+        error: 'Fighter not found'
+      });
+    }
+    
+    res.json({
+      success: true,
+      data: fighter
+    });
   } catch (error) {
-    res.status(500).json({ success: false, error: error.message });
+    res.status(500).json({
+      success: false,
+      error: error.message
+    });
   }
 });
 
-// GET /api/fights/recent?limit=10 - Get recent fights
-app.get('/api/fights/recent', (req, res) => {
+// GET fighter statistics
+app.get('/api/fighters/:id/stats', (req, res) => {
   try {
-    const limit = parseInt(req.query.limit) || 10;
-    const fights = db.prepare(`
+    const stmt = db.prepare(`
       SELECT 
-        e.event_name, e.event_date,
-        f1.name as fighter1, f2.name as fighter2,
-        fr.weight_class, fr.result, fr.method,
-        fr.round, fr.time
-      FROM fight_results fr
-      JOIN fighters f1 ON fr.fighter_id = f1.fighter_id
-      LEFT JOIN fighters f2 ON fr.opponent_id = f2.fighter_id
-      JOIN events e ON fr.event_id = e.event_id
-      ORDER BY e.event_date DESC, fr.fight_id DESC
-      LIMIT ?
-    `).all(limit);
+        stat_id,
+        fighter_id,
+        slpm,
+        str_acc,
+        sapm,
+        str_def,
+        td_avg,
+        td_acc,
+        td_def,
+        sub_avg,
+        updated_at
+      FROM fighter_stats
+      WHERE fighter_id = ?
+    `);
+    const stats = stmt.get(req.params.id);
     
-    res.json({ success: true, data: fights });
+    if (!stats) {
+      return res.status(404).json({
+        success: false,
+        error: 'Fighter stats not found'
+      });
+    }
+    
+    res.json({
+      success: true,
+      data: stats
+    });
   } catch (error) {
-    res.status(500).json({ success: false, error: error.message });
+    res.status(500).json({
+      success: false,
+      error: error.message
+    });
   }
 });
 
-// GET /api/fights/matchup/:fighter1/:fighter2 - Get head-to-head history
-app.get('/api/fights/matchup/:fighter1/:fighter2', (req, res) => {
+// GET fighter complete profile (fighter + stats)
+app.get('/api/fighters/:id/profile', (req, res) => {
   try {
-    const fights = db.prepare(`
+    const stmt = db.prepare(`
       SELECT 
-        e.event_name, e.event_date,
-        f1.name as fighter1, f2.name as fighter2,
-        fr.result as fighter1_result, fr.method, fr.round, fr.time,
-        fr.kd as fighter1_kd, fr.sig_str as fighter1_strikes,
-        fr2.kd as fighter2_kd, fr2.sig_str as fighter2_strikes
-      FROM fight_results fr
-      JOIN fighters f1 ON fr.fighter_id = f1.fighter_id
-      JOIN fighters f2 ON fr.opponent_id = f2.fighter_id
-      JOIN events e ON fr.event_id = e.event_id
-      LEFT JOIN fight_results fr2 ON fr2.event_id = fr.event_id 
-        AND fr2.fighter_id = f2.fighter_id 
-        AND fr2.opponent_id = f1.fighter_id
-      WHERE (f1.fighter_id = ? AND f2.fighter_id = ?)
+        f.fighter_id,
+        f.name,
+        f.nickname,
+        f.height,
+        f.weight,
+        f.reach,
+        f.stance,
+        f.dob,
+        f.created_at,
+        fs.slpm,
+        fs.str_acc,
+        fs.sapm,
+        fs.str_def,
+        fs.td_avg,
+        fs.td_acc,
+        fs.td_def,
+        fs.sub_avg
+      FROM fighters f
+      LEFT JOIN fighter_stats fs ON f.fighter_id = fs.fighter_id
+      WHERE f.fighter_id = ?
+    `);
+    const fighter = stmt.get(req.params.id);
+    
+    if (!fighter) {
+      return res.status(404).json({
+        success: false,
+        error: 'Fighter not found'
+      });
+    }
+    
+    res.json({
+      success: true,
+      data: fighter
+    });
+  } catch (error) {
+    res.status(500).json({
+      success: false,
+      error: error.message
+    });
+  }
+});
+
+// GET fighter fight history
+app.get('/api/fighters/:id/fights', (req, res) => {
+  try {
+    const stmt = db.prepare(`
+      SELECT 
+        f.fight_id,
+        e.event_name,
+        e.event_date,
+        e.location,
+        CASE 
+          WHEN f.fighter1_id = ? THEN f2.name
+          ELSE f1.name
+        END as opponent_name,
+        CASE 
+          WHEN f.fighter1_id = ? THEN f2.nickname
+          ELSE f1.nickname
+        END as opponent_nickname,
+        CASE 
+          WHEN f.winner_id = ? THEN 'Win'
+          WHEN f.winner_id IS NULL THEN 'Draw/NC'
+          ELSE 'Loss'
+        END as result,
+        f.method,
+        f.round,
+        f.time
+      FROM fights f
+      JOIN events e ON f.event_id = e.event_id
+      JOIN fighters f1 ON f.fighter1_id = f1.fighter_id
+      JOIN fighters f2 ON f.fighter2_id = f2.fighter_id
+      WHERE f.fighter1_id = ? OR f.fighter2_id = ?
       ORDER BY e.event_date DESC
-    `).all(req.params.fighter1, req.params.fighter2);
+    `);
+    const fights = stmt.all(req.params.id, req.params.id, req.params.id, req.params.id, req.params.id);
     
-    res.json({ success: true, data: fights });
+    res.json({
+      success: true,
+      count: fights.length,
+      data: fights
+    });
   } catch (error) {
-    res.status(500).json({ success: false, error: error.message });
+    res.status(500).json({
+      success: false,
+      error: error.message
+    });
   }
 });
 
-// ============== STATISTICS ENDPOINTS ==============
+// =============================================
+// FIGHT ENDPOINTS
+// =============================================
 
-// GET /api/stats/top-strikers?limit=10
-app.get('/api/stats/top-strikers', (req, res) => {
+// GET all fights
+app.get('/api/fights', (req, res) => {
   try {
-    const limit = parseInt(req.query.limit) || 10;
-    const fighters = db.prepare(`
-      SELECT name, slpm, str_acc, sapm, str_def
-      FROM fighters
-      WHERE slpm IS NOT NULL
-      ORDER BY slpm DESC
-      LIMIT ?
-    `).all(limit);
+    const { limit = 50, offset = 0 } = req.query;
     
-    res.json({ success: true, data: fighters });
+    const stmt = db.prepare(`
+      SELECT 
+        f.fight_id,
+        e.event_name,
+        e.event_date,
+        f1.name as fighter1_name,
+        f1.nickname as fighter1_nickname,
+        f2.name as fighter2_name,
+        f2.nickname as fighter2_nickname,
+        w.name as winner_name,
+        f.method,
+        f.round,
+        f.time
+      FROM fights f
+      JOIN events e ON f.event_id = e.event_id
+      JOIN fighters f1 ON f.fighter1_id = f1.fighter_id
+      JOIN fighters f2 ON f.fighter2_id = f2.fighter_id
+      LEFT JOIN fighters w ON f.winner_id = w.fighter_id
+      ORDER BY e.event_date DESC
+      LIMIT ? OFFSET ?
+    `);
+    const fights = stmt.all(parseInt(limit), parseInt(offset));
+    
+    res.json({
+      success: true,
+      count: fights.length,
+      data: fights
+    });
   } catch (error) {
-    res.status(500).json({ success: false, error: error.message });
+    res.status(500).json({
+      success: false,
+      error: error.message
+    });
   }
 });
 
-// GET /api/stats/top-grapplers?limit=10
-app.get('/api/stats/top-grapplers', (req, res) => {
+// GET single fight by ID
+app.get('/api/fights/:id', (req, res) => {
   try {
-    const limit = parseInt(req.query.limit) || 10;
-    const fighters = db.prepare(`
-      SELECT name, td_avg, td_acc, td_def, sub_avg
-      FROM fighters
-      WHERE td_avg IS NOT NULL
-      ORDER BY td_avg DESC
-      LIMIT ?
-    `).all(limit);
+    const fightStmt = db.prepare(`
+      SELECT 
+        f.fight_id,
+        f.event_id,
+        e.event_name,
+        e.event_date,
+        e.location,
+        f.fighter1_id,
+        f1.name as fighter1_name,
+        f1.nickname as fighter1_nickname,
+        f1.height as fighter1_height,
+        f1.weight as fighter1_weight,
+        f1.reach as fighter1_reach,
+        f1.stance as fighter1_stance,
+        f.fighter2_id,
+        f2.name as fighter2_name,
+        f2.nickname as fighter2_nickname,
+        f2.height as fighter2_height,
+        f2.weight as fighter2_weight,
+        f2.reach as fighter2_reach,
+        f2.stance as fighter2_stance,
+        f.winner_id,
+        w.name as winner_name,
+        f.method,
+        f.round,
+        f.time,
+        f.created_at
+      FROM fights f
+      JOIN events e ON f.event_id = e.event_id
+      JOIN fighters f1 ON f.fighter1_id = f1.fighter_id
+      JOIN fighters f2 ON f.fighter2_id = f2.fighter_id
+      LEFT JOIN fighters w ON f.winner_id = w.fighter_id
+      WHERE f.fight_id = ?
+    `);
+    const fight = fightStmt.get(req.params.id);
     
-    res.json({ success: true, data: fighters });
+    if (!fight) {
+      return res.status(404).json({
+        success: false,
+        error: 'Fight not found'
+      });
+    }
+    
+    // Get fighter stats
+    const statsStmt = db.prepare('SELECT * FROM fighter_stats WHERE fighter_id = ?');
+    const fighter1Stats = statsStmt.get(fight.fighter1_id);
+    const fighter2Stats = statsStmt.get(fight.fighter2_id);
+    
+    fight.fighter1_stats = fighter1Stats;
+    fight.fighter2_stats = fighter2Stats;
+    
+    res.json({
+      success: true,
+      data: fight
+    });
   } catch (error) {
-    res.status(500).json({ success: false, error: error.message });
+    res.status(500).json({
+      success: false,
+      error: error.message
+    });
   }
 });
 
-// Health check endpoint
-app.get('/api/health', (req, res) => {
-  res.json({ success: true, status: 'API is running', timestamp: new Date() });
+// =============================================
+// STATISTICS ENDPOINTS
+// =============================================
+
+// GET database statistics
+app.get('/api/stats/summary', (req, res) => {
+  try {
+    const eventCount = db.prepare('SELECT COUNT(*) as count FROM events').get();
+    const fighterCount = db.prepare('SELECT COUNT(*) as count FROM fighters').get();
+    const fightCount = db.prepare('SELECT COUNT(*) as count FROM fights').get();
+    
+    const recentEvents = db.prepare(`
+      SELECT event_name, event_date 
+      FROM events 
+      ORDER BY event_date DESC 
+      LIMIT 5
+    `).all();
+    
+    res.json({
+      success: true,
+      data: {
+        total_events: eventCount.count,
+        total_fighters: fighterCount.count,
+        total_fights: fightCount.count,
+        recent_events: recentEvents
+      }
+    });
+  } catch (error) {
+    res.status(500).json({
+      success: false,
+      error: error.message
+    });
+  }
+});
+
+// GET fighters by stance distribution
+app.get('/api/stats/stances', (req, res) => {
+  try {
+    const stmt = db.prepare(`
+      SELECT 
+        stance,
+        COUNT(*) as count
+      FROM fighters
+      WHERE stance != 'N/A'
+      GROUP BY stance
+      ORDER BY count DESC
+    `);
+    const stances = stmt.all();
+    
+    res.json({
+      success: true,
+      data: stances
+    });
+  } catch (error) {
+    res.status(500).json({
+      success: false,
+      error: error.message
+    });
+  }
+});
+
+// GET top fighters by wins
+app.get('/api/stats/top-fighters', (req, res) => {
+  try {
+    const { limit = 10 } = req.query;
+    
+    const stmt = db.prepare(`
+      SELECT 
+        f.fighter_id,
+        f.name,
+        f.nickname,
+        COUNT(CASE WHEN fi.winner_id = f.fighter_id THEN 1 END) as wins,
+        COUNT(CASE WHEN fi.winner_id != f.fighter_id AND fi.winner_id IS NOT NULL THEN 1 END) as losses,
+        COUNT(*) as total_fights
+      FROM fighters f
+      LEFT JOIN fights fi ON f.fighter_id = fi.fighter1_id OR f.fighter_id = fi.fighter2_id
+      GROUP BY f.fighter_id, f.name, f.nickname
+      HAVING total_fights > 0
+      ORDER BY wins DESC, losses ASC
+      LIMIT ?
+    `);
+    const topFighters = stmt.all(parseInt(limit));
+    
+    res.json({
+      success: true,
+      data: topFighters
+    });
+  } catch (error) {
+    res.status(500).json({
+      success: false,
+      error: error.message
+    });
+  }
+});
+
+// =============================================
+// ROOT & ERROR HANDLING
+// =============================================
+
+// Root endpoint
+app.get('/', (req, res) => {
+  res.json({
+    message: 'UFC Stats API',
+    version: '1.0.0',
+    endpoints: {
+      events: {
+        'GET /api/events': 'Get all events',
+        'GET /api/events/:id': 'Get event by ID',
+        'GET /api/events/:id/fights': 'Get all fights for an event'
+      },
+      fighters: {
+        'GET /api/fighters': 'Get all fighters (supports ?search=name&stance=Orthodox)',
+        'GET /api/fighters/:id': 'Get fighter by ID',
+        'GET /api/fighters/:id/stats': 'Get fighter statistics',
+        'GET /api/fighters/:id/profile': 'Get complete fighter profile',
+        'GET /api/fighters/:id/fights': 'Get fighter fight history'
+      },
+      fights: {
+        'GET /api/fights': 'Get all fights',
+        'GET /api/fights/:id': 'Get fight by ID with complete details'
+      },
+      statistics: {
+        'GET /api/stats/summary': 'Get database summary',
+        'GET /api/stats/stances': 'Get fighters by stance distribution',
+        'GET /api/stats/top-fighters': 'Get top fighters by wins'
+      }
+    }
+  });
 });
 
 // 404 handler
 app.use((req, res) => {
-  res.status(404).json({ success: false, error: 'Endpoint not found' });
+  res.status(404).json({
+    success: false,
+    error: 'Endpoint not found'
+  });
+});
+
+// Error handler
+app.use((err, req, res, next) => {
+  console.error(err.stack);
+  res.status(500).json({
+    success: false,
+    error: 'Internal server error'
+  });
 });
 
 // Start server
-const PORT = process.env.PORT || 3000;
 app.listen(PORT, () => {
-  console.log(`UFC API server running on port ${PORT}`);
-  console.log(`API endpoints available at http://localhost:${PORT}/api/`);
+  console.log(`\n🚀 UFC Stats API running on port ${PORT}`);
+  console.log(`📊 Access the API at http://localhost:${PORT}`);
+  console.log(`📖 View all endpoints at http://localhost:${PORT}/\n`);
 });
 
 // Graceful shutdown
 process.on('SIGINT', () => {
   db.close();
+  console.log('\nDatabase connection closed');
   process.exit(0);
 });
