@@ -1,7 +1,7 @@
 import sqlite3
 import json
 from datetime import datetime
-from get_event_data import scrape_ufc_event
+from utils.get_event_data import scrape_ufc_event
 
 def create_database():
     """Create the UFC database and tables"""
