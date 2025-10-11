@@ -79,6 +79,29 @@ app.get('/api/events/:id', (req, res) => {
   }
 });
 
+
+// GET db schema 
+app.get('/api/schema', (req, res) => {
+  // Get all table names
+  const tables = db.prepare("SELECT name FROM sqlite_master WHERE type='table'").all();
+
+  console.log("Database Schema for ufc_stats.db");
+  console.log("=".repeat(50));
+
+  // Define schema
+  const schema = {}
+  // For each table, print its schema
+  tables.forEach(table => {
+      // Get the CREATE TABLE statement
+      const schema = db.prepare("SELECT sql FROM sqlite_master WHERE type='table' AND name=?").get(table.name);
+      console.log(table.name, schema.sql)
+  });
+  res.json({
+    success: true,
+  })
+})
+
+
 // GET all fights for a specific event
 app.get('/api/events/:id/fights', (req, res) => {
   try {
